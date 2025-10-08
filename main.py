@@ -21,30 +21,32 @@ async def main():
     """Start the Telegram bot."""
     logger.info("Initializing bot...")
 
-    # Build the application
     app = Application.builder().token(AD_BOT_TOKEN).build()
 
-    # --- Register command handlers ---
+    # Register command handlers
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("broadcast", broadcast))
 
     logger.info("✅ Bot is starting...")
+    await app.run_polling()  # This internally handles init/start/shutdown safely
 
-    # Start polling
-    await app.initialize()
-    await app.start()
-    logger.info("🚀 Bot is now running and polling for updates...")
 
-    await app.run_polling(stop_signals=None)  # Prevents double stop on Render
-
-    # Clean shutdown (important for Render)
-    await app.stop()
-    await app.shutdown()
-    logger.info("🛑 Bot stopped cleanly.")
+# --- Safe Runner for Render or Local ---
+def safe_async_run(coro):
+    """Run async code safely in Render or any already-running loop."""
+    try:
+        asyncio.run(coro)
+    except RuntimeError as e:
+        if "already running" in str(e):
+            # Use nest_asyncio to reuse existing loop
+            import nest_asyncio
+            nest_asyncio.apply()
+            loop = asyncio.get_event_loop()
+            loop.create_task(coro)
+            loop.run_forever()
+        else:
+            raise
 
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except (KeyboardInterrupt, SystemExit):
-        print("🛑 Bot stopped manually.")
+    safe_async_run(main())
